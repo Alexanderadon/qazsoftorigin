@@ -1,26 +1,30 @@
 const express = require("express");
 const axios = require("axios");
 const { checkConnection } = require("./controllers/botactive");
+const { botToken, groupChatId, userId } = require("./config/config");
 const { User } = require("./models/users.model");
 const mongoose = require("mongoose");
 const { handleStartCommand } = require("./controllers/startController");
 const { handleCommand } = require("./controllers/commandController");
+const fs = require("fs");
 const { exportAnswers } = require("./controllers/quiz");
 const { handleQuizCommand } = require("./controllers/quiz");
 const { createBusinessConnection } = require("./BusinessConnection/Connection");
+const path = require("path");
 
 const app = express();
 const port = process.env.PORT || 3000;
-const botToken = process.env.BOT_TOKEN;
-const mongoUri = process.env.MONGODB_URI;
 
 app.use(express.json());
 
 async function someFunction(channel_post) {
   try {
-    const userId = "889435326";
-    const userChatId = channel_post.message.chat.id;
+    const userId = "889435326"; // Здесь у вас должен быть реальный userId
+    const userChatId = channel_post.message.chat.id; // Здесь у вас должен быть реальный userChatId
+
+    // Вызываем функцию createBusinessConnection и передаем userId и userChatId
     const newConnection = await createBusinessConnection(userId, userChatId);
+
     console.log("New Business Connection:", newConnection);
   } catch (error) {
     console.error("Error creating business connection:", error);
@@ -57,6 +61,7 @@ async function sendMessageError(chatId, text, res) {
   }
 }
 
+// Обработчик для всех команд
 app.post("/commands", async (req, res) => {
   try {
     const channel_post = req.body;
@@ -87,6 +92,7 @@ app.post("/commands", async (req, res) => {
       channel_post.message.audio ||
       !channel_post
     ) {
+      // Обработка голосового сообщения
       await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         chat_id: chatId,
         text: unknownCommandText,
@@ -97,6 +103,7 @@ app.post("/commands", async (req, res) => {
         .json({ success: true, message: "Voice message ignored." });
     }
 
+    // Обработка текстового сообщения
     const command = channel_post.message.text.trim();
 
     console.log("СМОТРЕТЬ ТУТ", channel_post.message.text);
@@ -163,8 +170,10 @@ const setCommands = async () => {
   }
 };
 
+// Вызов функции для установки команд
 setCommands();
 
+// Обработчик для добавления пользователя в базу данных
 app.post("/database/user", async (req, res) => {
   try {
     const user = await User.create(req.body);
@@ -179,11 +188,15 @@ setInterval(exportAnswers, 300000);
 app.listen(port, async () => {
   console.log(`Server is running on port ${port}`);
 
-  mongoose.connect(mongoUri, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  });
+  mongoose.connect(
+    "mongodb+srv://admin:1q4r6y1q4r6y@backdb.bgdmu1s.mongodb.net/database?retryWrites=true&w=majority&appName=BackDb",
+    {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    }
+  );
 
+  // Первоначальная проверка состояния при запуске сервера
   await checkConnection();
 });
 
