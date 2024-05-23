@@ -6,8 +6,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "NODE_ENV=development node src/server.js",
-    "build": "npm install --omit=dev && npm run build",
+    "start": "src/server.js",
     "dev": "nodemon src/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

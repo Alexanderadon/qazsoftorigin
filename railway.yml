@@ -1,0 +1,11 @@
+# railway.yml
+
+name: qazsoftbot
+services:
+  web:
+    port: 3000
+    # Здесь можно указать другие настройки вашего веб-сервиса, если необходимо
+
+build:
+  - name: Install dependencies
+    cmd: npm install --omit=dev && npm run build
