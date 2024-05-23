@@ -1,229 +1,200 @@
-  const express = require("express");
-  const axios = require("axios");
-  const ngrok = require("ngrok");
-  const { checkConnection } = require("./controllers/botactive");
-  const { botToken, groupChatId, userId } = require("./config/config");
-  const { User } = require("./models/users.model");
-  const mongoose = require("mongoose");
-  const { handleStartCommand } = require("./controllers/startController");
-  const { handleCommand } = require("./controllers/commandController");
-  const fs = require("fs");
-  const { exportAnswers } = require("./controllers/quiz");
-  const { handleQuizCommand } = require("./controllers/quiz");
-  const { createBusinessConnection } = require("./BusinessConnection/Connection");
-  const path = require("path");
+const express = require("express");
+const axios = require("axios");
+const { checkConnection } = require("./controllers/botactive");
+const { User } = require("./models/users.model");
+const mongoose = require("mongoose");
+const { handleStartCommand } = require("./controllers/startController");
+const { handleCommand } = require("./controllers/commandController");
+const { exportAnswers } = require("./controllers/quiz");
+const { handleQuizCommand } = require("./controllers/quiz");
+const { createBusinessConnection } = require("./BusinessConnection/Connection");
 
-  const app = express();
-  const port = 3000;
+const app = express();
+const port = process.env.PORT || 3000;
+const botToken = process.env.BOT_TOKEN;
+const mongoUri = process.env.MONGODB_URI;
 
-  app.use(express.json());
+app.use(express.json());
 
-  async function someFunction(channel_post) {
-    try {
-      const userId = "889435326"; // Здесь у вас должен быть реальный userId
-      const userChatId = channel_post.message.chat.id; // Здесь у вас должен быть реальный userChatId
-
-      // Вызываем функцию createBusinessConnection и передаем userId и userChatId
-      const newConnection = await createBusinessConnection(userId, userChatId);
-
-      console.log("New Business Connection:", newConnection);
-    } catch (error) {
-      console.error("Error creating business connection:", error);
-    }
+async function someFunction(channel_post) {
+  try {
+    const userId = "889435326";
+    const userChatId = channel_post.message.chat.id;
+    const newConnection = await createBusinessConnection(userId, userChatId);
+    console.log("New Business Connection:", newConnection);
+  } catch (error) {
+    console.error("Error creating business connection:", error);
   }
+}
 
-  async function sendMessageError(chatId, text, res) {
-    try {
-      const response = await axios.post(
-        `https://api.telegram.org/bot${botToken}/sendMessage`,
-        {
-          chat_id: chatId,
-          text: text,
+async function sendMessageError(chatId, text, res) {
+  try {
+    const response = await axios.post(
+      `https://api.telegram.org/bot${botToken}/sendMessage`,
+      {
+        chat_id: chatId,
+        text: text,
+      }
+    );
+
+    if (response.data.ok) {
+      res.status(200).json({
+        success: true,
+        message: "Message sent successfully.",
+      });
+    } else {
+      console.error("Failed to send message:", response.data.description);
+      res
+        .status(500)
+        .json({ success: false, message: "Failed to send message." });
+    }
+  } catch (error) {
+    console.error("Error sending message:", error);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred while sending message.",
+    });
+  }
+}
+
+app.post("/commands", async (req, res) => {
+  try {
+    const channel_post = req.body;
+    if (!channel_post || !channel_post.message) {
+      console.error("Invalid channel_post data or missing message");
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid request data." });
+    }
+
+    const chatId = channel_post.message.chat
+      ? channel_post.message.chat.id
+      : null;
+    const unknownCommandText = `Команда не распознана. Пожалуйста, попробуйте другую команду.`;
+    console.log("Я ТУТ ВЫВОЖУ channel_post:", channel_post);
+    console.log("я тело:", req.body);
+
+    if (
+      channel_post.message.voice ||
+      channel_post.message.document ||
+      channel_post.message.photo ||
+      channel_post.message.video ||
+      channel_post.message.poll ||
+      channel_post.message.sticker ||
+      channel_post.message.location ||
+      channel_post.message.gift ||
+      channel_post.message.file ||
+      channel_post.message.audio ||
+      !channel_post
+    ) {
+      await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        chat_id: chatId,
+        text: unknownCommandText,
+      });
+      console.log("Received voice message. Ignoring.");
+      return res
+        .status(200)
+        .json({ success: true, message: "Voice message ignored." });
+    }
+
+    const command = channel_post.message.text.trim();
+
+    console.log("СМОТРЕТЬ ТУТ", channel_post.message.text);
+
+    switch (command) {
+      case "/start":
+        await handleStartCommand(req, res);
+        break;
+      case "/order":
+      case "/tarif":
+      case "/tt":
+      case "/help":
+      case "/about":
+      case "/support":
+      case "/quiz":
+        await handleCommand(req, res);
+        break;
+      default:
+        if (
+          channel_post.message &&
+          channel_post.message.chat &&
+          channel_post.message.chat.id
+        ) {
+          await sendMessageError(chatId, unknownCommandText, res);
+        } else {
+          console.error("Invalid channel_post data or missing chat id");
+          res
+            .status(500)
+            .json({ success: false, message: "Invalid request data." });
         }
-      );
-
-      if (response.data.ok) {
-        res.status(200).json({
-          success: true,
-          message: "Message sent successfully.",
-        });
-      } else {
-        console.error("Failed to send message:", response.data.description);
-        res
-          .status(500)
-          .json({ success: false, message: "Failed to send message." });
-      }
-    } catch (error) {
-      console.error("Error sending message:", error);
-      res.status(500).json({
-        success: false,
-        message: "An error occurred while sending message.",
-      });
+        break;
     }
+  } catch (error) {
+    console.error("Error handling command:", error);
+    res.status(500).json({ success: false, message: "An error occurred." });
   }
+});
 
-  // Обработчик для всех команд
-  app.post("/commands", async (req, res) => {
-    try {
-      const channel_post = req.body;
-      if (!channel_post || !channel_post.message) {
-        console.error("Invalid channel_post data or missing message");
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid request data." });
-      }
+const setCommands = async () => {
+  try {
+    const commands = [
+      { command: "/start", description: "Начать" },
+      { command: "/order", description: "Сделать заказ" },
+      { command: "/tarif", description: "Узнать тарифы" },
+      { command: "/tt", description: "Что нужно для Технического Задания?" },
+      { command: "/quiz", description: "Пройти опрос из 3 вопросов" },
+      { command: "/about", description: "Информация о QazSoft" },
+      { command: "/help", description: "Все команды" },
+      { command: "/support", description: "Поддержать QazSoft" },
+    ];
 
-      const chatId = channel_post.message.chat
-        ? channel_post.message.chat.id
-        : null;
-      const unknownCommandText = `Команда не распознана. Пожалуйста, попробуйте другую команду.`;
-      console.log("Я ТУТ ВЫВОЖУ channel_post:", channel_post);
-      console.log("я тело:", req.body);
+    const response = await axios.post(
+      `https://api.telegram.org/bot${botToken}/setMyCommands`,
+      { commands: commands }
+    );
 
-      if (
-        channel_post.message.voice ||
-        channel_post.message.document ||
-        channel_post.message.photo ||
-        channel_post.message.video ||
-        channel_post.message.poll ||
-        channel_post.message.sticker ||
-        channel_post.message.location ||
-        channel_post.message.gift ||
-        channel_post.message.file ||
-        channel_post.message.audio ||
-        !channel_post
-      ) {
-        // Обработка голосового сообщения
-        await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          chat_id: chatId,
-          text: unknownCommandText,
-        });
-        console.log("Received voice message. Ignoring.");
-        return res
-          .status(200)
-          .json({ success: true, message: "Voice message ignored." });
-      }
-
-      // Обработка текстового сообщения
-      const command = channel_post.message.text.trim();
-
-      console.log("СМОТРЕТЬ ТУТ", channel_post.message.text);
-
-      switch (command) {
-        case "/start":
-          await handleStartCommand(req, res);
-          break;
-        case "/order":
-        case "/tarif":
-        case "/tt":
-        case "/help":
-        case "/about":
-        case "/help":
-        case "/support":
-        case "/quiz":
-          await handleCommand(req, res);
-          break;
-        // case "/quiz":
-        //   await handleQuizCommand(req, res);
-        //   break;
-        default:
-          if (
-            channel_post.message &&
-            channel_post.message.chat &&
-            channel_post.message.chat.id
-          ) {
-            await sendMessageError(chatId, unknownCommandText, res);
-          } else {
-            console.error("Invalid channel_post data or missing chat id");
-            res
-              .status(500)
-              .json({ success: false, message: "Invalid request data." });
-          }
-          break;
-      }
-    } catch (error) {
-      console.error("Error handling command:", error);
-      res.status(500).json({ success: false, message: "An error occurred." });
+    if (response.data.ok) {
+      console.log("Commands set successfully.");
+    } else {
+      console.error("Failed to set commands:", response.data.description);
     }
+  } catch (error) {
+    console.error("Error setting commands:", error);
+  }
+};
+
+setCommands();
+
+app.post("/database/user", async (req, res) => {
+  try {
+    const user = await User.create(req.body);
+    res.status(200).json({ message: "User added to collection", user });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+setInterval(exportAnswers, 300000);
+
+app.listen(port, async () => {
+  console.log(`Server is running on port ${port}`);
+
+  mongoose.connect(mongoUri, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
   });
 
-  const setCommands = async () => {
-    try {
-      const commands = [
-        { command: "/start", description: "Начать" },
-        { command: "/order", description: "Сделать заказ" },
-        { command: "/tarif", description: "Узнать тарифы" },
-        { command: "/tt", description: "Что нужно для Технического Задания?" },
-        { command: "/quiz", description: "Пройти опрос из 3 вопросов" },
-        { command: "/about", description: "Информация о QazSoft" },
-        { command: "/help", description: "Все команды" },
-        { command: "/support", description: "Поддержать QazSoft" },
-      ];
+  await checkConnection();
+});
 
-      const response = await axios.post(
-        `https://api.telegram.org/bot${botToken}/setMyCommands`,
-        { commands: commands }
-      );
-
-      if (response.data.ok) {
-        console.log("Commands set successfully.");
-      } else {
-        console.error("Failed to set commands:", response.data.description);
-      }
-    } catch (error) {
-      console.error("Error setting commands:", error);
-    }
-  };
-
-  // Вызов функции для установки команд
-  setCommands();
-
-  // Обработчик для добавления пользователя в базу данных
-  app.post("/database/user", async (req, res) => {
-    try {
-      const user = await User.create(req.body);
-      res.status(200).json({ message: "User added to collection", user });
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  setInterval(exportAnswers, 300000);
-
-  // Запуск сервера Express и установка вебхука с ngrok
-  async function startServer() {
-    try {
-      app.listen(port, async () => {
-        console.log(`Server is running on port ${port}`);
-
-        mongoose.connect(
-          "mongodb+srv://admin:1q4r6y1q4r6y@backdb.bgdmu1s.mongodb.net/database?retryWrites=true&w=majority&appName=BackDb"
-        );
-
-        // setInterval(checkConnection, 50000);
-
-        // Первоначальная проверка состояния при запуске сервера
-        await checkConnection();
-      });
-
-      const url = await ngrok.connect(port);
-      const webhookUrl = `${url}/commands`;
-      const allowedUpdates = ["message", "channel_post", "edited_channel_post"];
-
-      const response = await axios.post(
-        `https://api.telegram.org/bot${botToken}/setWebhook`,
-        { url: webhookUrl, allowed_updates: JSON.stringify(allowedUpdates) }
-      );
-
-      if (response.data.ok) {
-        console.log("Webhook set successfully.");
-        console.log(`Webhook URL: ${webhookUrl}`);
-      } else {
-        console.error("Failed to set webhook:", response.data.description);
-      }
-    } catch (error) {
-      console.error("Error starting server:", error);
-    }
+// Снимаем webhook при завершении работы сервера (опционально)
+process.on('SIGINT', async () => {
+  try {
+    await axios.post(`https://api.telegram.org/bot${botToken}/deleteWebhook`);
+    console.log("Webhook deleted successfully.");
+    process.exit(0);
+  } catch (error) {
+    console.error("Failed to delete webhook:", error);
+    process.exit(1);
   }
-
-  startServer();
+});
