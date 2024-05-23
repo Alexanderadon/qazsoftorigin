@@ -8,4 +8,4 @@ services:
 
 build:
   - name: Install dependencies
-    cmd: npm install && npm run buildd
+    cmd: npm install && npm run build
