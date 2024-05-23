@@ -8,4 +8,4 @@ services:
 
 build:
   - name: Install dependencies
-    cmd: npm install --omit=dev && npm run build
+    cmd: npm install && npm run buildd
