@@ -184,5 +184,21 @@ app.listen(port, async () => {
 
   // Первоначальная проверка состояния при запуске сервера
   await checkConnection();
+
+    // Установка вебхука
+    const webhookUrl = `https://dependable-dedication-erwr.up.railway.app/commands`; // замените на ваш фактический URL
+    const allowedUpdates = ["message", "channel_post", "edited_channel_post"];
+
+    const response = await axios.post(
+      `https://api.telegram.org/bot${botToken}/setWebhook`,
+      { url: webhookUrl, allowed_updates: JSON.stringify(allowedUpdates) }
+    );
+
+    if (response.data.ok) {
+      console.log("Webhook set successfully.");
+      console.log(`Webhook URL: ${webhookUrl}`);
+    } else {
+      console.error("Failed to set webhook:", response.data.description);
+    }
 });
 
